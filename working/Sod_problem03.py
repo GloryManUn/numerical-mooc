@@ -15,7 +15,7 @@ rcParams['font.size'] = 16
 
 #Basic initial condition parameters
 #defining grid size, time steps, CFL condition, etc...
-nx = 1281
+nx = 881
 T = 0.01
 dx = 20./(nx-1)
 sigma1 = 0.0008
@@ -77,15 +77,16 @@ u_n = numpy.zeros_like(u)
 print(u.shape,u_star.shape)
 
 
-u_plus = numpy.zeros_like(u)
-u_minus = numpy.zeros_like(u)
-flux = numpy.zeros_like(u)
 
-"""     Godunov
-for n in range(0,int(nt)):
+
+def Godunov(u,nt,dt,dx,gamma):
+    u_plus = numpy.zeros_like(u)
+    u_minus = numpy.zeros_like(u)
+    flux = numpy.zeros_like(u)
+    for n in range(0,int(nt)):
     #print('next step')
     
-    u_n = u.copy() 
+        u_n = u.copy() 
     #print(n)
     
     
@@ -93,46 +94,47 @@ for n in range(0,int(nt)):
     
     
     
-    u_plus[:,:-1] = u[:,1:] # Can't do i+1/2 indices, so cell boundary
-    u_minus = u.copy() # arrays at index i are at location i+1/2
-    flux = 0.5 * (f(u_minus, gamma) + 
+        u_plus[:,:-1] = u[:,1:] # Can't do i+1/2 indices, so cell boundary
+        u_minus = u.copy() # arrays at index i are at location i+1/2
+        flux = 0.5 * (f(u_minus, gamma) + 
                       f(u_plus, gamma) + 
                       dx / dt * (u_minus - u_plus))
-    u_n[:,1:-1] = u[:,1:-1] + dt/dx*(flux[:,:-2]-flux[:,1:-1])
-    u_n[:,0] = u[:,0]
-    u_n[:,-1] = u[:,-1]
-    u = u_n.copy()
- """
+        u_n[:,1:-1] = u[:,1:-1] + dt/dx*(flux[:,:-2]-flux[:,1:-1])
+        u_n[:,0] = u[:,0]
+        u_n[:,-1] = u[:,-1]
+        u = u_n.copy()
+    return u
+ 
 
 
 
-""" Rihtmayer
-
-for n in range(0,int(nt)):
+def Richtmyer(u,nt,dt,dx,gamma):
+    u_star = numpy.zeros((len(u),len(u[0])-1))
+    for n in range(0,int(nt)):
     #print('next step')
     #print(u)
-    u_n = u.copy() 
+        u_n = u.copy() 
     #print(n)
     #print(u_n)
     
-    F = f(u, gamma)
+        F = f(u, gamma)
     #print("u is ", type(u))
     #print(F)
-    u_star[:,:] = 0.5*((u[:,1:]+u[:,:-1])-dt/dx*(F[:,1:]-F[:,:-1]))
+        u_star[:,:] = 0.5*((u[:,1:]+u[:,:-1])-dt/dx*(F[:,1:]-F[:,:-1]))
     #print(u_star.shape)
         
     #print("u_star is ", type(u_star))
     #print(u_star)
-    F_star = f(u_star, gamma)
+        F_star = f(u_star, gamma)
     #print('F_star = ', F_star)
-    u_n[:,1:-1] = u[:,1:-1]-dt/dx*(F_star[:,1:]-F_star[:,:-1])
-    u_n[:,0] = u[:,0]
-    u_n[:,-1] = u[:,-1]
+        u_n[:,1:-1] = u[:,1:-1]-dt/dx*(F_star[:,1:]-F_star[:,:-1])
+        u_n[:,0] = u[:,0]
+        u_n[:,-1] = u[:,-1]
     #print('u_n = ', u_n)
-    u = u_n.copy()
+        u = u_n.copy()
     #print(u.shape)
     #print("u is ", type(u))
- """   
+    return u
     
  
 def minmod(e, dx):
@@ -161,19 +163,22 @@ def minmod(e, dx):
     
     # The following is inefficient but easy to read
     for i in range(1, len(e[0])-1):
-        if any(de_minus[:,i]*de_plus[:,i] <0.0):
-            sigma[:,i] = 0.0
-        elif any(numpy.abs(de_minus[:,i]) < numpy.abs(de_plus[:,i])):
-            sigma[:,i] = de_minus[:,i]
-        else:
-            sigma[:,i] = de_plus[:,i]
+        for j in range(0,3):
+            if (de_minus[j,i]*de_plus[j,i] <0.0):
+                sigma[j,i] = 0.0
+            elif (numpy.abs(de_minus[j,i]) < numpy.abs(de_plus[j,i])):
+                    sigma[j,i] = de_minus[j,i]
+            else:
+                    sigma[j,i] = de_plus[j,i]
             
     return sigma
 
 
 
-#MUSCL
-for t in range(0,int(nt)):
+def MUSCL(u,nt,dt,dx,gamma):
+    u_star = numpy.zeros((len(u),len(u[0])))
+    flux = numpy.zeros_like(u)
+    for t in range(0,int(nt)):
         u_n = u.copy()   
         sigma = minmod(u,dx) #calculate minmod slope
 
@@ -212,14 +217,14 @@ for t in range(0,int(nt)):
         u_n[:,0] = u[:,0]
         u_n[:,-1] = u[:,-1]
         u = u_n.copy()
+    return u
 
 
 
+#function call
 
-
-
-
-
+U = MUSCL(u,nt,dt,dx,gamma)
+U2 = Godunov(u,nt,dt,dx,gamma)
 
 
 
@@ -231,13 +236,14 @@ def f3(u, gamma):
    
     return numpy.array([u1, u2/u1, (u3/u1-0.5*u2*u2/u1/u1)*((gamma-1)*u1)])
     
-z2 = f3(u, gamma)
-
+z2 = f3(U, gamma)
+z3 = f3(U2, gamma)
 #count velocity, pressure and density
+"""
 print(z2[1,50])
 print(z2[2,50])
 print(z2[0,50])
-
+"""
 
 p = numpy.arange(len(u[0]))
 p = z2[2,:]
@@ -246,6 +252,20 @@ rho = numpy.arange(len(u[0]))
 rho = z2[0,:]
 v = numpy.arange(len(u[0]))
 v = z2[1,:]
+
+
+p3 = numpy.arange(len(u[0]))
+p3 = z3[2,:]
+print(p.shape,x.shape)
+rho3 = numpy.arange(len(u[0]))
+rho3 = z3[0,:]
+v3 = numpy.arange(len(u[0]))
+v3 = z3[1,:]
+
+
+
+#pyplot.plot(x, v3, color='red', ls='-', lw=3)
+pyplot.plot(x, p3, color='red', ls='-', lw=3)
 #pyplot.plot(x, rho, color='#003366', ls='-', lw=3)
 #pyplot.plot(x, v, color='blue', ls='-', lw=3)
 pyplot.plot(x, p, color='green', ls='-', lw=3)
